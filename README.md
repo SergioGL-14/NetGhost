@@ -342,11 +342,6 @@ Los resultados del escaneo y los conflictos detectados no se guardan al cerrar l
 
 ---
 
-## Contribuir
-
-Las contribuciones son bienvenidas.
----
-
 ## Licencia
 
 Este proyecto se distribuye bajo licencia MIT. Consulta el fichero `LICENSE` para más detalles.

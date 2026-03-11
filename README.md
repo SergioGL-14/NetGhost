@@ -345,7 +345,3 @@ Los resultados del escaneo y los conflictos detectados no se guardan al cerrar l
 ## Licencia
 
 Este proyecto se distribuye bajo licencia MIT. Consulta el fichero `LICENSE` para más detalles.
-
----
-
-*NetGhost — Porque los problemas de red que no se ven son los que más duelen.*

@@ -30,6 +30,56 @@ $Global:IsScanning        = $false
 # BLOQUE 1 – DETECCIÓN AUTOMÁTICA DE RED
 ##############################################################
 
+function Get-IPv4NetworkInfo {
+    param(
+        [Parameter(Mandatory)][string]$IPAddress,
+        [Parameter(Mandatory)][int]$PrefixLength
+    )
+
+    $address = $null
+    if (-not [System.Net.IPAddress]::TryParse($IPAddress, [ref]$address) -or
+        $address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork -or
+        $PrefixLength -lt 0 -or $PrefixLength -gt 32) {
+        throw "IPv4 o prefijo CIDR inválido: $IPAddress/$PrefixLength"
+    }
+
+    $bytes = $address.GetAddressBytes()
+    [uint32]$ip = ([uint32]$bytes[0] -shl 24) -bor ([uint32]$bytes[1] -shl 16) -bor
+        ([uint32]$bytes[2] -shl 8) -bor [uint32]$bytes[3]
+    [uint32]$mask = if ($PrefixLength -eq 0) { 0 } else { [uint32]::MaxValue -shl (32 - $PrefixLength) }
+    [uint32]$network = $ip -band $mask
+    [uint32]$broadcast = $network -bor ([uint32]::MaxValue -bxor $mask)
+
+    $networkBytes = [BitConverter]::GetBytes($network)
+    [array]::Reverse($networkBytes)
+    $networkAddress = ($networkBytes | ForEach-Object { $_ }) -join '.'
+    $networkParts = $networkAddress.Split('.')
+    $hostCount = [uint64]$broadcast - [uint64]$network - 1
+    $usableStart = if ($PrefixLength -ge 31) { $null } else { [uint64]$network + 1 }
+    $usableEnd = if ($PrefixLength -ge 31) { $null } else { [uint64]$broadcast - 1 }
+
+    [PSCustomObject]@{
+        NetworkAddress = $networkAddress
+        Broadcast      = $(
+            $broadcastBytes = [BitConverter]::GetBytes($broadcast)
+            [array]::Reverse($broadcastBytes)
+            ($broadcastBytes | ForEach-Object { $_ }) -join '.'
+        )
+        Prefix         = $PrefixLength
+        Subnet         = "$($networkParts[0]).$($networkParts[1]).$($networkParts[2])"
+        HostCount      = $hostCount
+        RangeStart     = if ($null -eq $usableStart) { 0 } else { [int][math]::Max(1, $usableStart - ($network -band 0xFFFFFF00)) }
+        RangeEnd       = if ($null -eq $usableEnd) { 0 } else { [int][math]::Min(254, $usableEnd - ($network -band 0xFFFFFF00)) }
+    }
+}
+
+function Test-ScanConfiguration {
+    param([string]$Subnet, [int]$RangeStart, [int]$RangeEnd)
+    return ($Subnet -match '^(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)$' -and
+        $RangeStart -ge 1 -and $RangeStart -le 254 -and
+        $RangeEnd -ge $RangeStart -and $RangeEnd -le 254)
+}
+
 function Get-ActiveSubnet {
     # Adaptadores físicos activos con gateway definido, descartando virtuales
     $candidates = Get-NetIPConfiguration | Where-Object {
@@ -58,23 +108,15 @@ function Get-ActiveSubnet {
     if ($selected -and $selected.IPv4Address) {
         $ip     = $selected.IPv4Address[0].IPAddress
         $prefix = $selected.IPv4Address[0].PrefixLength
-        $parts  = $ip.Split('.')
 
-        # Subred base (3 octetos para /24, 2 para /16)
-        $subnet = if ($prefix -le 16) {
-            "$($parts[0]).$($parts[1]).$($parts[2])"
-        } else {
-            "$($parts[0]).$($parts[1]).$($parts[2])"
-        }
-
-        $hostBits  = 32 - $prefix
-        $hostCount = [math]::Pow(2, $hostBits) - 2
-        $rangeEnd  = [int][math]::Min($hostCount, 254)
+        try { $network = Get-IPv4NetworkInfo -IPAddress $ip -PrefixLength $prefix } catch { return $null }
 
         return [PSCustomObject]@{
-            Subnet     = $subnet
-            RangeStart = 1
-            RangeEnd   = $rangeEnd
+             Subnet     = $network.Subnet
+             RangeStart = $network.RangeStart
+             RangeEnd   = $network.RangeEnd
+             Network    = $network.NetworkAddress
+             Broadcast  = $network.Broadcast
             LocalIP    = $ip
             Prefix     = $prefix
             Interface  = $selected.InterfaceAlias
@@ -254,22 +296,23 @@ function Start-NetworkScan {
 ##############################################################
 
 function Find-Conflicts {
-    param([System.Collections.ObjectModel.ObservableCollection[PSObject]]$Results)
+    param(
+        [System.Collections.ObjectModel.ObservableCollection[PSObject]]$Results,
+        [string[]]$ArpLines = @()
+    )
 
     $conflicts = @()
 
     # IPs duplicadas (misma IP, distintas MACs en tabla ARP)
-    $arpRaw = arp -a 2>$null
-    $arpAll = @{}
-    foreach ($line in $arpRaw) {
-        if ($line -match '^\s+([\d\.]+)\s+([\w\-]+)\s+(\w+)') {
-            $ip = $Matches[1]; $mac = $Matches[2].ToUpper()
-            if (-not $arpAll.ContainsKey($ip)) { $arpAll[$ip] = @() }
-            $arpAll[$ip] += $mac
+    if ($ArpLines.Count -eq 0) { $ArpLines = @(arp -a 2>$null) }
+    $arpEntries = foreach ($line in $ArpLines) {
+        if ($line -match '^\s+([\d\.]+)\s+([\w\:\-]+)\s+(\w+)') {
+            [PSCustomObject]@{ IP = $Matches[1]; MAC = $Matches[2].ToUpper() }
         }
     }
-    foreach ($ip in $arpAll.Keys) {
-        $macs = $arpAll[$ip] | Select-Object -Unique
+    foreach ($group in ($arpEntries | Group-Object IP)) {
+        $ip = $group.Name
+        $macs = @($group.Group.MAC | Select-Object -Unique)
         if ($macs.Count -gt 1) {
             $conflicts += [PSCustomObject]@{
                 Tipo      = "IP Duplicada"
@@ -1162,10 +1205,10 @@ function Invoke-DetectNetwork {
         $TxtSubnet.Text     = $info.Subnet
         $TxtRangeStart.Text = $info.RangeStart.ToString()
         $TxtRangeEnd.Text   = $info.RangeEnd.ToString()
-        $NetInfoText.Text   = "IP local: $($info.LocalIP)/$($info.Prefix)  ·  Gateway: $($info.Gateway)  ·  Interfaz: $($info.Interface)  ·  Subred: $($info.Subnet).0/$($info.Prefix)"
+        $NetInfoText.Text   = "IP local: $($info.LocalIP)/$($info.Prefix)  ·  Gateway: $($info.Gateway)  ·  Interfaz: $($info.Interface)  ·  Red: $($info.Network)/$($info.Prefix)"
         $NetInfoBanner.Visibility = "Visible"
         $StatusBarMsg.Text  = "Red detectada: $($info.LocalIP) | GW: $($info.Gateway) | Iface: $($info.Interface)"
-        Write-Log "Red detectada → Subred: $($info.Subnet).x | IP: $($info.LocalIP)/$($info.Prefix) | GW: $($info.Gateway) | Interfaz: $($info.Interface)" "OK"
+        Write-Log "Red detectada → Red: $($info.Network)/$($info.Prefix) | Rango: $($info.Subnet).$($info.RangeStart)-$($info.Subnet).$($info.RangeEnd) | IP: $($info.LocalIP) | GW: $($info.Gateway) | Interfaz: $($info.Interface)" "OK"
     } else {
         $NetInfoBanner.Visibility = "Collapsed"
         $StatusBarMsg.Text = "Sin red detectada — configura la subred manualmente"
@@ -1204,7 +1247,7 @@ $BtnScan.Add_Click({
         return
     }
 
-    if ($subnet -eq "" -or $start -ge $end -or $start -lt 1 -or $end -gt 254) {
+    if (-not (Test-ScanConfiguration -Subnet $subnet -RangeStart $start -RangeEnd $end)) {
         [System.Windows.MessageBox]::Show(
             "Verifica la subred (ej: 192.168.1) y el rango (1-254).",
             "NetGhost – Configuración inválida",

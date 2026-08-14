@@ -49,7 +49,7 @@ NetGhost nació de esa necesidad concreta: un script que cualquier técnico pued
 ## Características principales
 
 **Escaneo de red activo**
-- Ping concurrente sobre el rango de IPs configurado, con timeout ajustable.
+- Ping secuencial sobre el rango de IPs configurado, con timeout fijo de 500 ms.
 - Resolución de nombre NetBIOS vía `nbtstat` con fallback a DNS inverso.
 - Lectura de tabla ARP para obtener direcciones MAC sin elevar privilegios.
 - Identificación del fabricante por prefijo OUI (tabla integrada, sin llamadas externas).
@@ -60,7 +60,7 @@ NetGhost nació de esa necesidad concreta: un script que cualquier técnico pued
 - Identifica el adaptador de red activo con gateway definido al arrancar.
 - Filtra adaptadores virtuales: Hyper-V, VMware, VirtualBox, TAP, Tunnel, WAN Miniport, Bluetooth y otros.
 - Priorización por métrica de ruta, que es el mismo criterio que usa Windows para elegir la interfaz preferida.
-- Precarga automática de subred y rango en los campos de configuración.
+- Precarga automática de la dirección de red, prefijo CIDR y rango utilizable en los campos de configuración.
 
 **Análisis de conflictos**
 - Detección de IPs duplicadas: misma IP con distintas MACs en la tabla ARP.
@@ -179,7 +179,7 @@ Entre los candidatos válidos se selecciona el que tenga menor suma de `RouteMet
 
 **Resultado**
 
-El objeto devuelto contiene: subred base (tres primeros octetos), rango calculado según el prefijo de máscara, IP local, prefijo CIDR, alias de la interfaz y gateway. Todo se muestra en el banner informativo de la página de escaneo y se vuelca al log.
+El objeto devuelto contiene la dirección de red y broadcast calculadas aplicando la máscara CIDR, el rango utilizable limitado al segmento de escaneo mostrado, IP local, prefijo CIDR, alias de la interfaz y gateway. La interfaz conserva un campo de tres octetos y permite escanear hasta 254 hosts por ejecución.
 
 El botón **⬡ DETECTAR RED** permite repetir el proceso en cualquier momento sin reiniciar la aplicación, útil cuando el equipo cambia de red entre sesiones.
 
@@ -208,7 +208,7 @@ El escaneo se ejecuta en un Runspace independiente del hilo de la UI para no blo
 
 **Actualización de la UI:**
 
-Un `DispatcherTimer` con intervalo de 250 ms drena la cola de resultados en el hilo de la UI y los añade al `ObservableCollection` que está enlazado al DataGrid. El DataGrid se actualiza automáticamente por binding. La barra de progreso y los contadores se actualizan en el mismo tick.
+Un único Runspace procesa secuencialmente las IPs del rango. Un `DispatcherTimer` con intervalo de 250 ms drena la cola de resultados en el hilo de la UI y los añade al `ObservableCollection` que está enlazado al DataGrid. El DataGrid se actualiza automáticamente por binding. La barra de progreso y los contadores se actualizan en el mismo tick.
 
 ---
 
@@ -324,9 +324,9 @@ BLOQUE 4i – Inicialización y arranque
 
 La tabla integrada cubre los prefijos más comunes en entornos corporativos pero no es exhaustiva. No hay consulta al registro público de la IEEE. Para entornos con hardware menos habitual muchos fabricantes aparecerán como `Desconocido`.
 
-**Rango máximo de 254 hosts**
+**Rango máximo de 254 hosts por ejecución**
 
-El rango de escaneo está limitado a subredes /24 o menores (máximo 254 hosts por rango). En subredes /16 o mayores el campo `HASTA` se limita automáticamente a 254. Si se necesita cubrir rangos mayores hay que ejecutar múltiples escaneos cambiando la subred base.
+La autodetección calcula correctamente la dirección de red para cualquier prefijo IPv4. La interfaz mantiene un máximo de 254 hosts por ejecución; en redes mayores que /24 se debe repetir el escaneo por segmentos de tres octetos.
 
 **Detección de conflictos basada en ARP local**
 

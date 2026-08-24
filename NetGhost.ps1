@@ -1,14 +1,14 @@
 ﻿#Requires -Version 5.1
 ##############################################################
 # NETGHOST – Red Scan & Conflict Hunter
-# Versión: 1.1
+# Version: 1.1
 # Autor:   NetGhost Project
-# Descripción: Herramienta de escaneo, diagnóstico y detección
-#              de conflictos en red corporativa.
-# Cambios v1.1:
-#   - Autodetección de red activa al arrancar
-#   - Botón "Detectar Red" para refrescar manualmente
-#   - Filtro de adaptadores virtuales/VPN
+# Description: Scanning, diagnostics and conflict-detection
+#              tool for Windows corporate networks.
+# Changes in v1.1:
+#   - Active network autodetection at startup
+#   - "Detectar Red" button for manual refresh
+#   - Virtual/VPN adapter filtering
 ##############################################################
 
 Add-Type -AssemblyName PresentationFramework
@@ -81,7 +81,7 @@ function Test-ScanConfiguration {
 }
 
 function Get-ActiveSubnet {
-    # Adaptadores físicos activos con gateway definido, descartando virtuales
+    # Active physical adapters with a gateway defined, virtual ones discarded
     $candidates = Get-NetIPConfiguration | Where-Object {
         $_.IPv4DefaultGateway -ne $null -and
         $_.NetAdapter.Status -eq 'Up' -and
@@ -89,7 +89,7 @@ function Get-ActiveSubnet {
     }
 
     if (-not $candidates) {
-        # Fallback: cualquier adaptador activo con IP válida
+        # Fallback: any active adapter with a valid IP
         $candidates = Get-NetIPConfiguration | Where-Object {
             $_.IPv4Address -ne $null -and
             $_.NetAdapter.Status -eq 'Up' -and
@@ -99,7 +99,7 @@ function Get-ActiveSubnet {
 
     if (-not $candidates) { return $null }
 
-    # Priorizar por métrica de ruta (menor = preferida por el SO)
+    # Prioritize by route metric (lower = preferred by the OS)
     $selected = $candidates | Sort-Object {
         $gw = $_.IPv4DefaultGateway
         if ($gw) { $gw.RouteMetric + $gw.InterfaceMetric } else { 9999 }
@@ -355,7 +355,7 @@ function Find-Conflicts {
         }
     }
 
-    # Sin entrada ARP (cadáveres)
+    # Missing ARP entry (corpses)
     foreach ($row in $Results) {
         if ($row.MAC -eq "N/A" -or $row.Estado -eq "SIN_ARP") {
             $conflicts += [PSCustomObject]@{
@@ -1102,7 +1102,7 @@ $BtnExportLog       = $window.FindName("BtnExportLog")
 $GridScan.ItemsSource      = $Global:ScanResults
 $GridConflicts.ItemsSource = $Global:ConflictResults
 
-# Coloración de filas GridScan según Estado
+# GridScan row coloring by Estado
 $GridScan.Add_LoadingRow({
     param($s, $e)
     $item = $e.Row.Item
@@ -1123,7 +1123,7 @@ $GridScan.Add_LoadingRow({
     }
 })
 
-# Coloración de filas GridConflicts según Severidad
+# GridConflicts row coloring by Severidad
 $GridConflicts.Add_LoadingRow({
     param($s, $e)
     $item = $e.Row.Item
@@ -1423,12 +1423,12 @@ $timer.Interval = [TimeSpan]::FromSeconds(1)
 $timer.Add_Tick({ $TimeStamp.Text = (Get-Date).ToString("HH:mm:ss") })
 $timer.Start()
 
-# Página inicial
+# Initial page
 Set-ActivePage "scan"
 Write-Log "NetGhost iniciado. Versión $Global:AppVersion"
 Write-Log "Sistema: $env:COMPUTERNAME | Usuario: $env:USERNAME"
 
-# Autodetección de red al arrancar
+# Network autodetection at startup
 Invoke-DetectNetwork | Out-Null
 
 # Mostrar ventana

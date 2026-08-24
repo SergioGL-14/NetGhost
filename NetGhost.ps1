@@ -1431,6 +1431,6 @@ Write-Log "Sistema: $env:COMPUTERNAME | Usuario: $env:USERNAME"
 # Network autodetection at startup
 Invoke-DetectNetwork | Out-Null
 
-# Mostrar ventana
+# Show window
 $null = $window.ShowDialog()
 $timer.Stop()

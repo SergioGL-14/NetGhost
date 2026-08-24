@@ -1,347 +1,353 @@
 # NetGhost
 
-> Herramienta de escaneo, diagnóstico y detección de conflictos para redes corporativas Windows.  
-> Construida íntegramente en PowerShell con interfaz gráfica WPF nativa. Sin dependencias externas, sin instalación.
+> Scanning, diagnostics and conflict-detection tool for Windows corporate networks.
+> Built entirely in PowerShell with a native WPF interface. No external dependencies, no installation.
 
 ---
 
-## Índice
+## Index
 
-- [¿Qué es NetGhost?](#qué-es-netghost)
-- [Motivación](#motivación)
-- [Características principales](#características-principales)
-- [Capturas de pantalla](#capturas-de-pantalla)
-- [Requisitos](#requisitos)
-- [Instalación y uso](#instalación-y-uso)
-- [Descripción funcional detallada](#descripción-funcional-detallada)
-  - [Autodetección de red](#autodetección-de-red)
-  - [Escaneo de red](#escaneo-de-red)
-  - [Análisis de conflictos](#análisis-de-conflictos)
-  - [Herramientas ARP](#herramientas-arp)
-  - [Log de actividad](#log-de-actividad)
-- [Arquitectura técnica](#arquitectura-técnica)
-- [Estructura del código](#estructura-del-código)
-- [Limitaciones conocidas](#limitaciones-conocidas)
-- [Hoja de ruta](#hoja-de-ruta)
-- [Contribuir](#contribuir)
-- [Licencia](#licencia)
+- [What is NetGhost?](#what-is-netghost)
+- [Motivation](#motivation)
+- [Main features](#main-features)
+- [Requirements](#requirements)
+- [Installation and usage](#installation-and-usage)
+- [Detailed functional description](#detailed-functional-description)
+  - [Network autodetection](#network-autodetection)
+  - [Network scan](#network-scan)
+  - [Conflict analysis](#conflict-analysis)
+  - [ARP tools](#arp-tools)
+  - [Activity log](#activity-log)
+- [Technical architecture](#technical-architecture)
+- [Code structure](#code-structure)
+- [Known limitations](#known-limitations)
+- [Tests](#tests)
+- [License](#license)
 
 ---
 
-## ¿Qué es NetGhost?
+## What is NetGhost?
 
-NetGhost es una herramienta de administración de red desarrollada en PowerShell que permite a técnicos e ingenieros de sistemas realizar un inventario rápido de los equipos activos en una subred local, detectar conflictos de direccionamiento IP y diagnosticar problemas de acceso, todo desde una interfaz gráfica WPF sin necesidad de instalar ningún software adicional.
+NetGhost is a network administration tool written in PowerShell that lets technicians and system engineers take a quick inventory of active machines on a local subnet, detect IP addressing conflicts and diagnose access problems, all from a WPF interface with no additional software to install.
 
-El nombre hace referencia a esa clase de problemas de red que no se ven a simple vista: equipos fantasma que responden a ping pero no aparecen en el ARP, IPs duplicadas que causan intermitencias, o nombres NetBIOS repetidos que generan confusión en entornos de dominio. NetGhost los saca a la luz.
-
----
-
-## Motivación
-
-En entornos corporativos medianos y grandes es habitual encontrarse con situaciones que los monitores de red convencionales no detectan bien: una impresora con IP fija que colisiona con el DHCP, un equipo que fue retirado pero cuya entrada ARP sigue activa, o dos máquinas que comparten nombre NetBIOS tras una migración mal documentada.
-
-Las herramientas profesionales de gestión de red (SolarWinds, PRTG, Lansweeper) cubren estos casos pero requieren infraestructura, licencias y tiempo de despliegue. En muchos escenarios lo que se necesita es algo que funcione ahora mismo, en el equipo que tienes delante, sin instalar nada.
-
-NetGhost nació de esa necesidad concreta: un script que cualquier técnico pueda ejecutar directamente en PowerShell, que tenga una interfaz usable (no solo texto en consola) y que dé información accionable en menos de un minuto.
+The name refers to that class of network problems you cannot see at first glance: ghost machines that answer ping but never show up in ARP, duplicate IPs causing intermittent failures, or repeated NetBIOS names creating confusion in domain environments. NetGhost brings them to light.
 
 ---
 
-## Características principales
+## Motivation
 
-**Escaneo de red activo**
-- Ping secuencial sobre el rango de IPs configurado, con timeout fijo de 500 ms.
-- Resolución de nombre NetBIOS vía `nbtstat` con fallback a DNS inverso.
-- Lectura de tabla ARP para obtener direcciones MAC sin elevar privilegios.
-- Identificación del fabricante por prefijo OUI (tabla integrada, sin llamadas externas).
-- Comprobación de puertos SMB (445) y RDP (3389) por TCP para evaluar accesibilidad.
-- Clasificación automática de cada host: `OK`, `WARN` o `SIN_ARP`.
+In mid-sized and large corporate environments it is common to run into situations conventional network monitors do not catch well: a printer with a static IP colliding with DHCP, a machine that was decommissioned but whose ARP entry is still alive, or two computers sharing a NetBIOS name after a poorly documented migration.
 
-**Autodetección de red**
-- Identifica el adaptador de red activo con gateway definido al arrancar.
-- Filtra adaptadores virtuales: Hyper-V, VMware, VirtualBox, TAP, Tunnel, WAN Miniport, Bluetooth y otros.
-- Priorización por métrica de ruta, que es el mismo criterio que usa Windows para elegir la interfaz preferida.
-- Precarga automática de la dirección de red, prefijo CIDR y rango utilizable en los campos de configuración.
+Professional network management suites (SolarWinds, PRTG, Lansweeper) cover these cases but demand infrastructure, licenses and deployment time. In many scenarios what you need is something that works right now, on the machine in front of you, without installing anything.
 
-**Análisis de conflictos**
-- Detección de IPs duplicadas: misma IP con distintas MACs en la tabla ARP.
-- Detección de nombres NetBIOS duplicados: mismo nombre en diferentes IPs.
-- Identificación de hosts con acceso bloqueado: responden ping pero tienen SMB y RDP cerrados.
-- Catalogación de entradas ARP huérfanas: host visible pero sin registro ARP.
-- Clasificación por severidad: `CRITICO` (riesgo de colisión activo) o `AVISO` (anomalía que requiere revisión).
-
-**Herramientas ARP**
-- Volcado de la tabla ARP completa del sistema.
-- Limpieza de caché ARP local con confirmación previa (requiere privilegios de administrador).
-
-**Log de actividad**
-- Registro persistente durante la sesión de todas las operaciones realizadas.
-- Niveles: INFO, OK, WARN, ERROR.
-- Exportación a fichero `.txt`.
-
-**Exportación de datos**
-- Resultados de conflictos exportables a CSV con fecha y hora en el nombre del fichero.
-- Log de actividad exportable a texto plano.
-
-**Interfaz**
-- WPF nativa, tema oscuro, sin dependencias de terceros.
-- Escaneo no bloqueante mediante Runspace independiente con comunicación por cola thread-safe.
-- Barra de progreso en tiempo real con contador de hosts descubiertos.
-- Coloración de filas por estado directamente desde el evento `LoadingRow` del DataGrid.
+NetGhost was born from that concrete need: a script any technician can run straight from PowerShell, with a usable interface (not just console text) and actionable information in under a minute.
 
 ---
 
-## Capturas de pantalla
+## Main features
 
-> _Las capturas se añadirán en próximas versiones del repositorio._
+**Active network scan**
+- Sequential ping over the configured IP range, fixed 500 ms timeout.
+- NetBIOS name resolution via `nbtstat` with reverse-DNS fallback.
+- ARP table readout to obtain MAC addresses without elevation.
+- Vendor identification by OUI prefix (embedded table, no external calls).
+- SMB (445) and RDP (3389) TCP port checks to assess accessibility.
+- Automatic classification of every host: `OK`, `WARN` or `SIN_ARP`.
+
+**Network autodetection**
+- Identifies the active adapter with a gateway defined at startup.
+- Filters virtual adapters: Hyper-V, VMware, VirtualBox, TAP, Tunnel, WAN Miniport, Bluetooth and others.
+- Prioritization by route metric — the same criterion Windows uses to pick the preferred interface.
+- Auto-preloads network address, CIDR prefix and usable range into the configuration fields.
+
+**Conflict analysis**
+- Duplicate IP detection: same IP with different MACs in the ARP table.
+- Duplicate NetBIOS detection: same name on different IPs.
+- Blocked-access hosts: they answer ping but have both SMB and RDP closed.
+- Orphaned ARP entry cataloging: host visible but no ARP record.
+- Severity classification: `CRITICO` (active collision risk) or `AVISO` (anomaly requiring review).
+
+**ARP tools**
+- Full dump of the system ARP table.
+- Local ARP cache flush with prior confirmation (requires administrator privileges).
+
+**Activity log**
+- Persistent session log of every operation performed.
+- Levels: INFO, OK, WARN, ERROR.
+- Export to `.txt` file.
+
+**Data export**
+- Conflict results exportable to CSV with timestamped file names.
+- Activity log exportable to plain text.
+
+**Interface**
+- Native WPF, dark theme, zero third-party dependencies.
+- Non-blocking scan through an independent Runspace with thread-safe queue communication.
+- Real-time progress bar with discovered-host counter.
+- Row coloring by state directly from the DataGrid `LoadingRow` event.
 
 ---
 
-## Requisitos
+## Requirements
 
-| Requisito | Detalle |
+| Requirement | Detail |
 |---|---|
-| Sistema operativo | Windows 10 / Windows 11 / Windows Server 2016 o superior |
-| PowerShell | 5.1 o superior (incluido en Windows por defecto) |
-| .NET Framework | 4.5 o superior (incluido en Windows 10+) |
-| Módulo NetTCPIP | Incluido por defecto desde Windows 8 / Server 2012 |
-| Privilegios | Usuario estándar para escaneo. Administrador para limpiar caché ARP |
-| Conectividad | El equipo debe estar en la misma subred o tener enrutamiento hacia el rango escaneado |
+| Operating system | Windows 10 / Windows 11 / Windows Server 2016 or higher |
+| PowerShell | 5.1 or higher (included in Windows by default) |
+| .NET Framework | 4.5 or higher (included in Windows 10+) |
+| NetTCPIP module | Included by default since Windows 8 / Server 2012 |
+| Privileges | Standard user for scanning. Administrator to flush the ARP cache |
+| Connectivity | The machine must be on the same subnet or have routing to the scanned range |
 
-No requiere instalación, módulos de PowerShell adicionales, ni acceso a internet.
+No installation, no extra PowerShell modules, no internet access required.
 
 ---
 
-## Instalación y uso
+## Installation and usage
 
-### Descarga directa
+### Direct download
 
 ```
-git clone https://github.com/tuusuario/netghost.git
-cd netghost
+git clone https://github.com/SergioGL-14/NetGhost.git
+cd NetGhost
 ```
 
-O descarga el fichero `NetGhost.ps1` directamente desde la sección _Releases_.
+Or download `NetGhost.ps1` directly from the _Releases_ section.
 
-### Ejecución
+### Running it
 
-**Opción 1 — Desde el explorador de Windows**
+**Option 1 — From Windows Explorer**
 
-Clic derecho sobre `NetGhost.ps1` → _Ejecutar con PowerShell_.
+Right-click `NetGhost.ps1` → _Run with PowerShell_.
 
-Si Windows bloquea la ejecución por política, usar la opción 2.
+If Windows blocks execution by policy, use option 2.
 
-**Opción 2 — Desde PowerShell con bypass puntual**
+**Option 2 — From PowerShell with one-time bypass**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\NetGhost.ps1
 ```
 
-Este parámetro aplica únicamente a la ejecución actual, no modifica la política del sistema.
+This parameter applies only to the current run; it does not change the system policy.
 
-**Opción 3 — Desde PowerShell ISE o VS Code**
+**Option 3 — From PowerShell ISE or VS Code**
 
-Abrir el fichero y pulsar F5, o ejecutar en terminal integrado:
+Open the file and press F5, or run in the integrated terminal:
 
 ```powershell
 . .\NetGhost.ps1
 ```
 
-### Flujo de trabajo típico
+### Typical workflow
 
-1. Al arrancar, NetGhost detecta automáticamente la red activa y precarga los campos de subred y rango.
-2. Revisar los valores detectados. Ajustar el rango si solo se quiere escanear un segmento concreto.
-3. Pulsar **▶ ESCANEAR**. El escaneo corre en segundo plano y los resultados aparecen en tiempo real.
-4. Una vez finalizado, ir a **⚡ Conflictos** y pulsar **ANALIZAR CONFLICTOS**.
-5. Revisar los conflictos detectados. Exportar a CSV si se necesita documentar o escalar.
-6. Usar **Herramientas ARP** si se necesita limpiar la caché o ver la tabla completa.
-7. El **Log de actividad** recoge todo lo ocurrido durante la sesión y puede exportarse.
+1. At startup, NetGhost detects the active network and preloads the subnet and range fields.
+2. Review the detected values. Adjust the range if you only want to scan one specific segment.
+3. Press **▶ ESCANEAR**. The scan runs in the background and results appear in real time.
+4. When it finishes, go to **⚡ Conflictos** and press **ANALIZAR CONFLICTOS**.
+5. Review the detected conflicts. Export to CSV if you need to document or escalate.
+6. Use **Herramientas ARP** if you need to flush the cache or see the full table.
+7. The **activity log** records everything that happened during the session and can be exported.
 
----
-
-## Descripción funcional detallada
-
-### Autodetección de red
-
-Al iniciar, NetGhost llama a `Get-ActiveSubnet`, que usa `Get-NetIPConfiguration` para obtener los adaptadores de red disponibles. El proceso de selección tiene dos fases:
-
-**Fase 1 — Filtrado por calidad del adaptador**
-
-Se descartan adaptadores que cumplan cualquiera de estas condiciones:
-- Sin gateway IPv4 definido (no son la puerta de salida a la red).
-- Estado distinto de `Up`.
-- Descripción que coincida con el patrón: `Hyper-V`, `VMware`, `VirtualBox`, `Loopback`, `Teredo`, `isatap`, `Bluetooth`, `TAP`, `Tunnel`, `WAN Miniport`, `Microsoft Wi-Fi Direct`, `Kernel Debug`.
-
-Si no queda ningún candidato tras el filtro estricto, se aplica un filtro de fallback menos restrictivo que solo exige que el adaptador esté activo y tenga IP asignada.
-
-**Fase 2 — Selección por métrica de ruta**
-
-Entre los candidatos válidos se selecciona el que tenga menor suma de `RouteMetric + InterfaceMetric`. Esta es exactamente la misma lógica que usa Windows para decidir qué interfaz usa por defecto para enrutar tráfico. En equipos con Ethernet y Wi-Fi simultáneamente activos, seleccionará la correcta en la gran mayoría de casos.
-
-**Resultado**
-
-El objeto devuelto contiene la dirección de red y broadcast calculadas aplicando la máscara CIDR, el rango utilizable limitado al segmento de escaneo mostrado, IP local, prefijo CIDR, alias de la interfaz y gateway. La interfaz conserva un campo de tres octetos y permite escanear hasta 254 hosts por ejecución.
-
-El botón **⬡ DETECTAR RED** permite repetir el proceso en cualquier momento sin reiniciar la aplicación, útil cuando el equipo cambia de red entre sesiones.
+Button labels are shown as the interface displays them, which is in Spanish.
 
 ---
 
-### Escaneo de red
+## Detailed functional description
 
-El escaneo se ejecuta en un Runspace independiente del hilo de la UI para no bloquearla. La comunicación entre el Runspace y la interfaz gráfica se realiza mediante una `ConcurrentQueue<PSObject>`, que es thread-safe por diseño.
+### Network autodetection
 
-**Proceso por cada IP del rango:**
+At startup, NetGhost calls `Get-ActiveSubnet`, which uses `Get-NetIPConfiguration` to enumerate available adapters. Selection happens in two phases:
 
-1. **Ping** — Se envía un ICMP echo request con timeout de 500 ms usando `System.Net.NetworkInformation.Ping`. Solo se continúa si la respuesta es `Success`.
+**Phase 1 — Adapter quality filtering**
 
-2. **Lookup ARP** — Se consulta la tabla ARP que se leyó al inicio del escaneo (una sola lectura para todo el rango). Si la IP tiene entrada, se obtiene su MAC. Si no, se marca como `N/A`.
+Adapters matching any of these conditions are discarded:
+- No IPv4 gateway defined (not the way out to the network).
+- Status other than `Up`.
+- Description matching: `Hyper-V`, `VMware`, `VirtualBox`, `Loopback`, `Teredo`, `isatap`, `Bluetooth`, `TAP`, `Tunnel`, `WAN Miniport`, `Microsoft Wi-Fi Direct`, `Kernel Debug`.
 
-3. **Identificación de fabricante** — Se toman los 3 primeros bytes de la MAC (OUI) y se buscan en una tabla integrada de 20 fabricantes habituales en entornos corporativos. Sin consultas externas ni APIs.
+If no candidate survives the strict filter, a less restrictive fallback applies that only requires the adapter to be up and have an IP assigned.
 
-4. **Resolución de nombre** — Se intenta primero con `nbtstat -A` buscando registros `<00> UNIQUE` (nombre de máquina NetBIOS). Si falla, se usa `[System.Net.Dns]::GetHostEntry` para resolución DNS inversa. Si ambos fallan, se devuelve `?`.
+**Phase 2 — Route metric selection**
 
-5. **Comprobación de puertos** — Se abre una conexión TCP asíncrona a los puertos 445 (SMB) y 3389 (RDP) con timeout de 600 ms. Se registra si el puerto está abierto o cerrado.
+Among valid candidates, the one with the lowest `RouteMetric + InterfaceMetric` sum wins. This is exactly the logic Windows uses to decide which interface routes traffic by default. On machines with Ethernet and Wi-Fi active simultaneously, it picks the right one in the vast majority of cases.
 
-6. **Clasificación del host:**
-   - `OK` — Tiene MAC en ARP y al menos uno de los dos puertos accesible.
-   - `WARN` — Tiene MAC pero ninguno de los dos puertos responde.
-   - `SIN_ARP` — Responde ping pero no tiene entrada en la tabla ARP.
+**Result**
 
-**Actualización de la UI:**
+The returned object carries network and broadcast addresses computed from the CIDR mask, the usable range limited to the displayed three-octet scan segment, local IP, CIDR prefix, interface alias and gateway. The interface keeps a three-octet field and allows scanning up to 254 hosts per run.
 
-Un único Runspace procesa secuencialmente las IPs del rango. Un `DispatcherTimer` con intervalo de 250 ms drena la cola de resultados en el hilo de la UI y los añade al `ObservableCollection` que está enlazado al DataGrid. El DataGrid se actualiza automáticamente por binding. La barra de progreso y los contadores se actualizan en el mismo tick.
-
----
-
-### Análisis de conflictos
-
-El análisis opera sobre los datos ya recogidos en el escaneo más una lectura fresca de la tabla ARP del sistema. Se ejecuta de forma síncrona ya que es rápido por naturaleza.
-
-**Tipo 1 — IP Duplicada (CRITICO)**
-
-Se lee la tabla ARP completa y se agrupa por IP. Si una misma IP aparece asociada a más de una MAC distinta, es un conflicto de direccionamiento activo. Esto suele indicar que dos equipos tienen la misma IP estática, o que un equipo ha cambiado de tarjeta de red sin actualizar la reserva DHCP. Es la situación más grave porque causa pérdidas de paquetes intermitentes difíciles de diagnosticar.
-
-**Tipo 2 — NetBIOS Duplicado (CRITICO)**
-
-Se recorren los resultados del escaneo y se agrupan los nombres NetBIOS. Si el mismo nombre aparece en más de una IP, hay una colisión de nombres en la red. En entornos de dominio esto puede impedir que el equipo se autentique correctamente o que los recursos compartidos sean accesibles.
-
-**Tipo 3 — Acceso Bloqueado (AVISO)**
-
-Hosts que responden ping pero tienen los puertos 445 y 3389 cerrados. Puede ser un firewall mal configurado, un equipo con perfil de red en modo público, o un dispositivo no Windows (impresora, NAS, switch gestionado) que no expone esos servicios. Requiere revisión pero no implica un conflicto activo.
-
-**Tipo 4 — Sin entrada ARP (AVISO)**
-
-Hosts que responden ping pero no tienen registro en la tabla ARP local. Puede ocurrir cuando el equipo está en una subred diferente enrutada, cuando el ARP está siendo suprimido por algún agente de seguridad, o cuando la entrada ha expirado entre el ping y la lectura ARP. Merece investigación porque puede esconder un equipo no autorizado.
+The **⬡ DETECTAR RED** button repeats the process at any time without restarting the app — useful when the machine changes networks between sessions.
 
 ---
 
-### Herramientas ARP
+### Network scan
 
-**Ver tabla ARP**
+The scan runs in a Runspace independent from the UI thread so it never blocks it. Communication between the Runspace and the interface uses a `ConcurrentQueue<PSObject>`, which is thread-safe by design.
 
-Ejecuta `arp -a` y vuelca la salida completa en el área de texto de la página de herramientas. Útil para inspección manual rápida sin salir de la aplicación.
+**Per IP in the range:**
 
-**Limpiar caché ARP**
+1. **Ping** — An ICMP echo request with 500 ms timeout via `System.Net.NetworkInformation.Ping`. Only `Success` continues.
 
-Ejecuta `netsh interface ip delete arpcache` tras confirmación del usuario. Esta operación requiere que PowerShell esté ejecutándose con privilegios de administrador. Útil cuando se ha resuelto un conflicto de IP y se quiere forzar al sistema a redescubrir las MACs correctas sin esperar a que expire el TTL de las entradas ARP (por defecto 2 minutos en Windows).
+2. **ARP lookup** — Queries the ARP table read once at scan start (a single read for the whole range). If the IP has an entry, its MAC is taken; otherwise marked `N/A`.
+
+3. **Vendor identification** — First 3 bytes of the MAC (OUI) looked up in an embedded table of 20 vendors common in corporate environments. No external queries, no APIs.
+
+4. **Name resolution** — First `nbtstat -A` looking for `<00> UNIQUE` records (NetBIOS machine name). If that fails, `[System.Net.Dns]::GetHostEntry` for reverse DNS. If both fail, returns `?`.
+
+5. **Port check** — Asynchronous TCP connection attempt to ports 445 (SMB) and 3389 (RDP) with 600 ms timeout. Open or closed state recorded.
+
+6. **Host classification:**
+   - `OK` — Has MAC in ARP and at least one of the two ports reachable.
+   - `WARN` — Has MAC but neither port answers.
+   - `SIN_ARP` — Answers ping but has no entry in the ARP table.
+
+**UI update:**
+
+A single Runspace processes the range sequentially. A `DispatcherTimer` with a 250 ms interval drains the result queue on the UI thread and appends them to the `ObservableCollection` bound to the DataGrid. The grid updates automatically through binding. Progress bar and counters refresh on the same tick.
 
 ---
 
-### Log de actividad
+### Conflict analysis
 
-Cada operación relevante queda registrada con timestamp y nivel:
+The analysis works on data already gathered during the scan plus a fresh read of the system ARP table. It runs synchronously since it is fast by nature.
 
-- `[·]` INFO — Operaciones normales de inicio, navegación, configuración.
-- `[✔]` OK — Operaciones completadas con éxito.
-- `[⚠]` WARN — Situaciones que requieren atención pero no son errores.
-- `[✘]` ERROR — Fallos en operaciones.
+**Type 1 — Duplicate IP (CRITICO)**
 
-El log es de solo lectura durante la sesión. Puede limpiarse manualmente o exportarse a `.txt` desde la barra de herramientas de la página de log.
+The full ARP table is read and grouped by IP. If the same IP shows more than one distinct MAC, that is an active addressing conflict. It usually means two machines share a static IP, or a machine changed its network card without updating the DHCP reservation. It is the most serious situation because it causes intermittent packet loss that is hard to diagnose.
+
+**Type 2 — Duplicate NetBIOS (CRITICO)**
+
+Scan results are grouped by NetBIOS name. If the same name appears on more than one IP, there is a name collision on the network. In domain environments this can prevent the machine from authenticating properly or make shares unreachable.
+
+**Type 3 — Blocked access (AVISO)**
+
+Hosts answering ping with both 445 and 3389 closed. Could be a misconfigured firewall, a machine with its network profile set to public, or a non-Windows device (printer, NAS, managed switch) not exposing those services. Needs review but is not an active conflict.
+
+**Type 4 — Missing ARP entry (AVISO)**
+
+Hosts answering ping without a record in the local ARP table. Can happen when the machine sits on a different routed subnet, when ARP is being suppressed by some security agent, or when the entry expired between the ping and the ARP read. Worth investigating because it can hide an unauthorized machine.
 
 ---
 
-## Arquitectura técnica
+### ARP tools
+
+**View ARP table**
+
+Runs `arp -a` and dumps the complete output into the text area of the tools page. Handy for quick manual inspection without leaving the app.
+
+**Flush ARP cache**
+
+Runs `netsh interface ip delete arpcache` after user confirmation. Requires PowerShell running with administrator privileges. Useful after resolving an IP conflict to force the system into rediscovering the correct MACs without waiting for ARP entry TTLs to expire (2 minutes by default on Windows).
+
+---
+
+### Activity log
+
+Every relevant operation is logged with timestamp and level:
+
+- `[·]` INFO — Normal startup, navigation and configuration operations.
+- `[✔]` OK — Operations completed successfully.
+- `[⚠]` WARN — Situations needing attention but not errors.
+- `[✘]` ERROR — Operation failures.
+
+The log is read-only during the session. It can be cleared manually or exported to `.txt` from the log page toolbar.
+
+---
+
+## Technical architecture
 
 ```
 NetGhost.ps1
 │
-├── [Hilo UI – STA Dispatcher]
-│   ├── WPF Window (XAML embebido en here-string)
+├── [UI thread – STA Dispatcher]
+│   ├── WPF Window (XAML embedded in here-string)
 │   ├── ObservableCollection → DataGrid binding
-│   ├── DispatcherTimer (250ms) → drena ConcurrentQueue
-│   └── Eventos de botones, navegación, exportación
+│   ├── DispatcherTimer (250ms) → drains ConcurrentQueue
+│   └── Button events, navigation, export
 │
-└── [Runspace independiente – STA]
-    ├── Ping range (secuencial, timeout 500ms)
-    ├── ARP lookup (tabla leída una vez al inicio)
+└── [Independent Runspace – STA]
+    ├── Ping range (sequential, timeout 500ms)
+    ├── ARP lookup (table read once at start)
     ├── NetBIOS/DNS resolution
     ├── TCP port check 445, 3389 (async, timeout 600ms)
-    └── Enqueue resultados → ConcurrentQueue<PSObject>
+    └── Enqueue results → ConcurrentQueue<PSObject>
 ```
 
-**Por qué un Runspace y no Start-Job o Start-ThreadJob**
+**Why a Runspace instead of Start-Job or Start-ThreadJob**
 
-`Start-Job` serializa los objetos al cruzar el límite del proceso, lo que elimina los tipos .NET que necesitamos. `Start-ThreadJob` no está disponible en PowerShell 5.1 sin instalar el módulo `ThreadJob`. El Runspace con `BeginInvoke` es la solución nativa que funciona en todas las versiones requeridas y permite compartir referencias a objetos .NET directamente, incluyendo la `ConcurrentQueue`.
+`Start-Job` serializes objects crossing the process boundary, which strips away the .NET types we need. `Start-ThreadJob` is not available on PowerShell 5.1 without installing the `ThreadJob` module. A Runspace with `BeginInvoke` is the native solution that works across every required version and allows sharing direct .NET object references, including the `ConcurrentQueue`.
 
-**Por qué ConcurrentQueue y no un Synchronized ArrayList**
+**Why ConcurrentQueue instead of a Synchronized ArrayList**
 
-`ConcurrentQueue<T>` está diseñada específicamente para el patrón productor-consumidor. El Runspace produce, el DispatcherTimer consume. No requiere locks explícitos y `TryDequeue` es una operación atómica que no bloquea. Un `ArrayList` sincronizado requeriría un lock en cada acceso y añadiría complejidad innecesaria.
+`ConcurrentQueue<T>` is designed exactly for the producer-consumer pattern. The Runspace produces, the DispatcherTimer consumes. No explicit locks needed and `TryDequeue` is an atomic, non-blocking operation. A synchronized `ArrayList` would require a lock on every access and add needless complexity.
 
-**Por qué XAML embebido en lugar de fichero externo**
+**Why embedded XAML instead of an external file**
 
-Para mantener el script como fichero único y autocontenido. `XamlReader.Load()` parsea el XAML en tiempo de ejecución. Esta aproximación tiene la limitación de que `DataTemplate.Triggers` no está soportado por el parser parcial de PowerShell (a diferencia del compilador XAML de Visual Studio), por lo que la lógica de coloración de filas se delega al evento `LoadingRow` del DataGrid.
+To keep the script a single self-contained file. `XamlReader.Load()` parses the XAML at runtime. One limitation of this approach: `DataTemplate.Triggers` is not supported by PowerShell's partial parser (unlike Visual Studio's XAML compiler), so row coloring is delegated to the DataGrid `LoadingRow` event.
 
 ---
 
-## Estructura del código
+## Code structure
 
-El script está dividido en bloques numerados y comentados:
+The script is divided into numbered, commented blocks:
 
 ```
-BLOQUE 0  – Configuración global y variables compartidas
-BLOQUE 1  – Función Get-ActiveSubnet (autodetección de red)
-BLOQUE 2  – Funciones de escaneo: Get-ArpTable, Get-MACVendor, Start-NetworkScan
-BLOQUE 3  – Funciones de análisis: Find-Conflicts, Clear-ArpCache
-BLOQUE 4  – Definición XAML de la interfaz WPF
-BLOQUE 4b – Carga de la ventana y referencias a controles
-BLOQUE 4c – Funciones de UI: Write-Log, Set-ActivePage, Set-ScanningState, Invoke-DetectNetwork
-BLOQUE 4d – Eventos de navegación del sidebar
-BLOQUE 4e – Eventos de detección y escaneo
-BLOQUE 4f – Eventos de análisis de conflictos
-BLOQUE 4g – Eventos de herramientas ARP
-BLOQUE 4h – Eventos de log
-BLOQUE 4i – Inicialización y arranque
+BLOQUE 0  – Global configuration and shared variables
+BLOQUE 1  – Get-ActiveSubnet function (network autodetection)
+BLOQUE 2  – Scan functions: Get-ArpTable, Get-MACVendor, Start-NetworkScan
+BLOQUE 3  – Analysis functions: Find-Conflicts, Clear-ArpCache
+BLOQUE 4  – WPF interface XAML definition
+BLOQUE 4b – Window load and control references
+BLOQUE 4c – UI functions: Write-Log, Set-ActivePage, Set-ScanningState, Invoke-DetectNetwork
+BLOQUE 4d – Sidebar navigation events
+BLOQUE 4e – Detection and scan events
+BLOQUE 4f – Conflict analysis events
+BLOQUE 4g – ARP tools events
+BLOQUE 4h – Log events
+BLOQUE 4i – Initialization and startup
 ```
 
 ---
 
-## Limitaciones conocidas
+## Known limitations
 
-**Resolución NetBIOS**
+**NetBIOS resolution**
 
-`nbtstat -A` puede tardar entre 1 y 3 segundos por host en redes con latencia o cuando el servicio NetBIOS sobre TCP/IP está deshabilitado. En redes con muchos hosts esto alarga el tiempo de escaneo. Una mejora futura pasaría por paralelizar las resoluciones de nombre.
+`nbtstat -A` can take between 1 and 3 seconds per host on high-latency networks or when NetBIOS over TCP/IP is disabled. On networks with many hosts this lengthens the scan. A future improvement would be parallelizing name resolutions.
 
-**Tabla OUI de fabricantes**
+**Vendor OUI table**
 
-La tabla integrada cubre los prefijos más comunes en entornos corporativos pero no es exhaustiva. No hay consulta al registro público de la IEEE. Para entornos con hardware menos habitual muchos fabricantes aparecerán como `Desconocido`.
+The embedded table covers prefixes common in corporate environments but is not exhaustive. There is no query against the public IEEE registry. On sites with less common hardware, many vendors will show as `Desconocido`.
 
-**Rango máximo de 254 hosts por ejecución**
+**Maximum range of 254 hosts per run**
 
-La autodetección calcula correctamente la dirección de red para cualquier prefijo IPv4. La interfaz mantiene un máximo de 254 hosts por ejecución; en redes mayores que /24 se debe repetir el escaneo por segmentos de tres octetos.
+Autodetection computes the correct network address for any IPv4 prefix. The interface keeps a maximum of 254 hosts per run; on networks larger than /24 the scan must be repeated per three-octet segment.
 
-**Detección de conflictos basada en ARP local**
+**Conflict detection based on the local ARP table**
 
-El análisis de IPs duplicadas se basa en la tabla ARP del equipo donde corre NetGhost, no en una captura de tráfico. Esto significa que solo detecta conflictos que han generado entradas ARP en ese equipo concreto. Un conflicto entre dos hosts que nunca han comunicado con el equipo de análisis no será visible.
+Duplicate IP analysis relies on the ARP table of the machine running NetGhost, not on traffic capture. That means it only detects conflicts that produced ARP entries on that particular machine. A conflict between two hosts that never talked to the analysis machine stays invisible.
 
-**Requiere misma subred o enrutamiento**
+**Same subnet or routing required**
 
-El ping y las comprobaciones TCP deben poder alcanzar los hosts objetivo. En redes con VLANs sin enrutamiento entre ellas solo se verán los hosts de la VLAN local.
+Ping and TCP checks must reach the target hosts. On networks with VLANs lacking inter-VLAN routing, only hosts on the local VLAN will appear.
 
-**Sin persistencia entre sesiones**
+**No persistence between sessions**
 
-Los resultados del escaneo y los conflictos detectados no se guardan al cerrar la aplicación, salvo que se exporten manualmente a CSV o txt antes de cerrar.
+Scan results and detected conflicts are not saved when the app closes, unless manually exported to CSV or txt beforehand.
 
 ---
 
-## Licencia
+## Tests
 
-Este proyecto se distribuye bajo licencia MIT. Consulta el fichero `LICENSE` para más detalles.
+`Tests/NetGhost.Tests.ps1` checks the script statically (parseability without loading WPF) and then extracts the pure functions — `Get-IPv4NetworkInfo`, `Test-ScanConfiguration`, `Find-Conflicts` — via AST, loading them without touching the WPF startup code. With those it validates CIDR math (/25 and /16 cases), scan configuration validation and duplicate-IP detection against a synthetic ARP table. Run it after touching any of those areas:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Tests\NetGhost.Tests.ps1
+```
+
+CI runs the same check on every push.
+
+---
+
+## License
+
+This project is distributed under the MIT license. See the `LICENSE` file for details.

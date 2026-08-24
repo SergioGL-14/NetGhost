@@ -17,7 +17,7 @@ Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Windows.Forms
 
 ##############################################################
-# BLOQUE 0 – CONFIGURACIÓN GLOBAL
+# BLOCK 0 – GLOBAL CONFIGURATION
 ##############################################################
 
 $Global:AppVersion        = "1.1.0"
@@ -27,7 +27,7 @@ $Global:LogLines          = [System.Collections.Generic.List[string]]::new()
 $Global:IsScanning        = $false
 
 ##############################################################
-# BLOQUE 1 – DETECCIÓN AUTOMÁTICA DE RED
+# BLOCK 1 – AUTOMATIC NETWORK DETECTION
 ##############################################################
 
 function Get-IPv4NetworkInfo {
@@ -127,7 +127,7 @@ function Get-ActiveSubnet {
 }
 
 ##############################################################
-# BLOQUE 2 – ESCANEO DE RED LOCAL
+# BLOCK 2 – LOCAL NETWORK SCAN
 ##############################################################
 
 function Get-ArpTable {
@@ -292,7 +292,7 @@ function Start-NetworkScan {
 }
 
 ##############################################################
-# BLOQUE 3 – ANÁLISIS DE CONFLICTOS
+# BLOCK 3 – CONFLICT ANALYSIS
 ##############################################################
 
 function Find-Conflicts {
@@ -380,7 +380,7 @@ function Clear-ArpCache {
 }
 
 ##############################################################
-# BLOQUE 4 – INTERFAZ WPF
+# BLOCK 4 – WPF INTERFACE
 ##############################################################
 
 $xaml = @"
@@ -706,7 +706,7 @@ $xaml = @"
             </DockPanel>
         </Border>
 
-        <!-- ÁREA PRINCIPAL -->
+        <!-- MAIN AREA -->
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -740,10 +740,10 @@ $xaml = @"
                 </Grid>
             </Border>
 
-            <!-- Contenido por página -->
+            <!-- Per-page content -->
             <Grid Grid.Row="1" x:Name="MainContent">
 
-                <!-- PÁGINA: ESCANEO -->
+                <!-- PAGE: SCAN -->
                 <Grid x:Name="PageScan" Visibility="Visible">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -751,7 +751,7 @@ $xaml = @"
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Banner de red detectada -->
+                    <!-- Detected network banner -->
                     <Border x:Name="NetInfoBanner"
                             Grid.Row="0"
                             Background="#0A1628"
@@ -770,7 +770,7 @@ $xaml = @"
                         </StackPanel>
                     </Border>
 
-                    <!-- Panel de configuración -->
+                    <!-- Settings panel -->
                     <Border Grid.Row="1"
                             Background="#131720"
                             BorderBrush="#1A1F2E"
@@ -778,7 +778,7 @@ $xaml = @"
                             Padding="20,14">
                         <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
 
-                            <!-- Botón detectar red -->
+                            <!-- Detect network button -->
                             <StackPanel Orientation="Vertical" VerticalAlignment="Bottom" Margin="0,0,16,0">
                                 <TextBlock Text="AUTO" Foreground="#374151"
                                            FontFamily="Consolas" FontSize="10" FontWeight="Bold" Margin="0,0,0,4"/>
@@ -843,7 +843,7 @@ $xaml = @"
                         </WrapPanel>
                     </Border>
 
-                    <!-- Resultados -->
+                    <!-- Results -->
                     <Grid Grid.Row="2">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
@@ -864,7 +864,7 @@ $xaml = @"
                             </DataGrid.Columns>
                         </DataGrid>
 
-                        <!-- Barra de progreso -->
+                        <!-- Progress bar -->
                         <Border Grid.Row="1"
                                 Background="#0F1219"
                                 BorderBrush="#1A1F2E"
@@ -895,7 +895,7 @@ $xaml = @"
                     </Grid>
                 </Grid>
 
-                <!-- PÁGINA: CONFLICTOS -->
+                <!-- PAGE: CONFLICTS -->
                 <Grid x:Name="PageConflicts" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -931,7 +931,7 @@ $xaml = @"
                     </DataGrid>
                 </Grid>
 
-                <!-- PÁGINA: HERRAMIENTAS ARP -->
+                <!-- PAGE: ARP TOOLS -->
                 <Grid x:Name="PageTools" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -985,7 +985,7 @@ $xaml = @"
                     </Border>
                 </Grid>
 
-                <!-- PÁGINA: LOG -->
+                <!-- PAGE: LOG -->
                 <Grid x:Name="PageLog" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -1016,7 +1016,7 @@ $xaml = @"
 
             </Grid>
 
-            <!-- StatusBar inferior -->
+            <!-- Bottom StatusBar -->
             <Border Grid.Row="2"
                     Background="#0B0D12"
                     BorderBrush="#1A1F2E"
@@ -1047,7 +1047,7 @@ $xaml = @"
 "@
 
 ##############################################################
-# BLOQUE 4b – CARGA Y CONSTRUCCIÓN DE LA VENTANA
+# BLOCK 4b – WINDOW LOADING AND BUILDING
 ##############################################################
 
 $reader = [System.Xml.XmlNodeReader]::new([xml]$xaml)
@@ -1144,7 +1144,7 @@ $GridConflicts.Add_LoadingRow({
 })
 
 ##############################################################
-# BLOQUE 4c – FUNCIONES DE UI
+# BLOCK 4c – UI FUNCTIONS
 ##############################################################
 
 function Write-Log {
@@ -1218,7 +1218,7 @@ function Invoke-DetectNetwork {
 }
 
 ##############################################################
-# BLOQUE 4d – EVENTOS DE NAVEGACIÓN
+# BLOCK 4d – NAVIGATION EVENTS
 ##############################################################
 
 $NavScan.Add_Click({      Set-ActivePage "scan"      })
@@ -1227,7 +1227,7 @@ $NavTools.Add_Click({     Set-ActivePage "tools"     })
 $NavLog.Add_Click({       Set-ActivePage "log"       })
 
 ##############################################################
-# BLOQUE 4e – EVENTOS DE DETECCIÓN Y ESCANEO
+# BLOCK 4e – DETECTION AND SCAN EVENTS
 ##############################################################
 
 $BtnDetectNet.Add_Click({
@@ -1331,7 +1331,7 @@ $BtnClearScan.Add_Click({
 })
 
 ##############################################################
-# BLOQUE 4f – EVENTOS DE CONFLICTOS
+# BLOCK 4f – CONFLICT EVENTS
 ##############################################################
 
 $BtnAnalyze.Add_Click({
@@ -1371,7 +1371,7 @@ $BtnExportConflicts.Add_Click({
 })
 
 ##############################################################
-# BLOQUE 4g – EVENTOS DE HERRAMIENTAS ARP
+# BLOCK 4g – ARP TOOLS EVENTS
 ##############################################################
 
 $BtnClearArp.Add_Click({
@@ -1395,7 +1395,7 @@ $BtnShowArp.Add_Click({
 })
 
 ##############################################################
-# BLOQUE 4h – EVENTOS DE LOG
+# BLOCK 4h – LOG EVENTS
 ##############################################################
 
 $BtnClearLog.Add_Click({
@@ -1414,7 +1414,7 @@ $BtnExportLog.Add_Click({
 })
 
 ##############################################################
-# BLOQUE 4i – INIT Y ARRANQUE
+# BLOCK 4i – INIT AND STARTUP
 ##############################################################
 
 # Timestamp en tiempo real
